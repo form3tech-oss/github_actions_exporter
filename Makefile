@@ -12,4 +12,4 @@ test:
 
 .PHONY: build
 build:
-	go build -o github-actions-exporter .
+	CGO_ENABLED=0 go build -o github-actions-exporter .

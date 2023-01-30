@@ -7,10 +7,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/patrickmn/go-cache"
 	"io"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cpanato/github_actions_exporter/model"
 	"github.com/go-kit/log"
@@ -24,6 +27,7 @@ type WorkflowMetricsExporter struct {
 	Logger             log.Logger
 	Opts               Opts
 	PrometheusObserver WorkflowObserver
+	Cache              *cache.Cache
 }
 
 func NewWorkflowMetricsExporter(logger log.Logger, opts Opts) *WorkflowMetricsExporter {
@@ -31,6 +35,7 @@ func NewWorkflowMetricsExporter(logger log.Logger, opts Opts) *WorkflowMetricsEx
 		Logger:             logger,
 		Opts:               opts,
 		PrometheusObserver: &PrometheusObserver{},
+		Cache:              cache.New(time.Hour, time.Minute),
 	}
 }
 
@@ -74,7 +79,7 @@ func (c *WorkflowMetricsExporter) HandleGHWebHook(w http.ResponseWriter, r *http
 		return
 	case "workflow_job":
 		event := model.WorkflowJobEventFromJSON(io.NopCloser(bytes.NewBuffer(buf)))
-		_ = level.Info(c.Logger).Log("msg", "got workflow_job event", "org", event.GetRepo().GetOwner().GetLogin(), "repo", event.GetRepo().GetName(), "runId", event.GetWorkflowJob().GetRunID(), "action", event.GetAction())
+		_ = level.Info(c.Logger).Log("msg", "got workflow_job event", "org", event.Repo.Owner.Login, "repo", event.Repo.Name, "runId", event.WorkflowJob.RunID, "action", event.Action)
 		go c.CollectWorkflowJobEvent(event)
 	case "workflow_run":
 		event := model.WorkflowRunEventFromJSON(io.NopCloser(bytes.NewBuffer(buf)))
@@ -90,28 +95,65 @@ func (c *WorkflowMetricsExporter) HandleGHWebHook(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *github.WorkflowJobEvent) {
-	repo := event.GetRepo().GetName()
-	org := event.GetRepo().GetOwner().GetLogin()
+func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJobEvent) {
+	repo := *event.Repo.Name
+	org := *event.Repo.Owner.Login
 	runnerGroup := event.WorkflowJob.GetRunnerGroupName()
 
-	action := event.GetAction()
-	conclusion := event.GetWorkflowJob().GetConclusion()
-	status := event.GetWorkflowJob().GetStatus()
+	action := *event.Action
+	conclusion := ""
 
+	if event.WorkflowJob.Conclusion != nil {
+		conclusion = *event.WorkflowJob.Conclusion
+	}
+
+	status := *event.WorkflowJob.Status
+	id := strconv.FormatInt(*event.WorkflowJob.ID, 10)
 	switch action {
 	case "queued":
-		// Do nothing.
-	case "in_progress":
-
-		if len(event.WorkflowJob.Steps) == 0 {
-			_ = level.Debug(c.Logger).Log("msg", "unable to calculate job duration of in_progress event as event has no steps")
+		if event.WorkflowJob.StartedAt == nil {
+			_ = level.Debug(c.Logger).Log("msg", "not storing queued event as it has no timestamp")
 			break
 		}
 
-		firstStep := event.WorkflowJob.Steps[0]
-		queuedSeconds := firstStep.StartedAt.Time.Sub(event.WorkflowJob.StartedAt.Time).Seconds()
-		c.PrometheusObserver.ObserveWorkflowJobDuration(org, repo, "queued", runnerGroup, math.Max(0, queuedSeconds))
+		c.Cache.Set(id, event, time.Hour)
+	case "in_progress":
+		if event.WorkflowJob.StartedAt == nil {
+			_ = level.Debug(c.Logger).Log("msg", "unable to calculate job duration of completed event steps are missing timestamps")
+			break
+		}
+
+		queuedEvent, found := c.Cache.Get(id)
+
+		if !found {
+			_ = level.Error(c.Logger).Log("msg", "unable to calculate queue duration as there is no queued event for "+id)
+			break
+		}
+
+		queuedAt := queuedEvent.(*model.WorkflowJobEvent).WorkflowJob.StartedAt
+
+		// In case of deployments the time waiting for an approval adds to the queue time, so we use the last
+		// modified date of the deployment which should be the approval time and a more accurate representation of
+		// the runner queue time
+		if queuedEvent.(*model.WorkflowJobEvent).Deployment != nil {
+			deployment := queuedEvent.(*model.WorkflowJobEvent).Deployment
+			if deployment.UpdatedAt == nil {
+				_ = level.Error(c.Logger).Log("msg", "unable to calculate queue duration - deployment has no last update time")
+				break
+			}
+			queuedAt = queuedEvent.(*model.WorkflowJobEvent).Deployment.UpdatedAt
+		}
+
+		startedAt := event.WorkflowJob.StartedAt
+		queuedSeconds := startedAt.Sub(queuedAt.Time).Seconds()
+
+		if queuedSeconds < 0 {
+			_ = level.Error(c.Logger).Log("msg", "not recording the queue time as it is negative")
+			break
+		}
+
+		c.Cache.Delete(id)
+		c.PrometheusObserver.ObserveWorkflowJobQueueTime(org, repo, runnerGroup, queuedSeconds)
 	case "completed":
 		if event.WorkflowJob.StartedAt == nil || event.WorkflowJob.CompletedAt == nil {
 			_ = level.Debug(c.Logger).Log("msg", "unable to calculate job duration of completed event steps are missing timestamps")
@@ -119,7 +161,7 @@ func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *github.Workflow
 		}
 
 		jobSeconds := math.Max(0, event.WorkflowJob.GetCompletedAt().Time.Sub(event.WorkflowJob.GetStartedAt().Time).Seconds())
-		c.PrometheusObserver.ObserveWorkflowJobDuration(org, repo, "in_progress", runnerGroup, jobSeconds)
+		c.PrometheusObserver.ObserveWorkflowJobDuration(org, repo, runnerGroup, jobSeconds)
 		c.PrometheusObserver.CountWorkflowJobDuration(org, repo, status, conclusion, runnerGroup, jobSeconds)
 	}
 
