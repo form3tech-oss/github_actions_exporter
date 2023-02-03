@@ -134,6 +134,7 @@ func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJ
 			_ = level.Error(logger).Log("msg", "unable to calculate queue duration as there is no queued event")
 			break
 		}
+		defer c.Cache.Delete(id)
 
 		queuedAt := queuedEvent.(*model.WorkflowJobEvent).WorkflowJob.GetStartedAt()
 
@@ -157,7 +158,6 @@ func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJ
 			break
 		}
 
-		c.Cache.Delete(id)
 		c.PrometheusObserver.ObserveWorkflowJobQueueTime(org, repo, runnerGroup, queuedSeconds)
 	case "completed":
 		if event.WorkflowJob.StartedAt == nil || event.WorkflowJob.CompletedAt == nil {
