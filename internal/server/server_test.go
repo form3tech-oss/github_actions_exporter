@@ -73,7 +73,6 @@ func Test_Server_MetricsRouteAfterWorkflowJob(t *testing.T) {
 			StartedAt:       &github.Timestamp{Time: jobStartedAt},
 			CompletedAt:     &github.Timestamp{Time: completedAt},
 			RunnerGroupName: &runnerGroupName,
-			Labels:          []string{"linux", "x64", "self-hosted", "large"},
 		},
 	}
 	req := testWebhookRequest(t, "http://localhost:8000/webhook", "workflow_job", event)
