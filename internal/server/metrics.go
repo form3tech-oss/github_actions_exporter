@@ -12,8 +12,15 @@ var (
 	)
 
 	workflowJobQueueTimeHistogram = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "workflow_job_queue_seconds",
-		Help:    "Time that a workflow job spent in a queued state.",
+		Name: "workflow_job_queue_seconds",
+		Help: "Time that a workflow job spent in a queued state.",
+		// The buckets have been selected with the following assumptions:
+		// 1. 10min is the GitHub SLO for larger runners, so we want to measure this accurately by having a 10min bucket.
+		// 2. 5min is the GitHub SLO for hosted runners, so for the same reason we have a 5min bucket.
+		// 3. In case of a longer queue time we have some buckets to capture it, but we don't need as much accuracy.
+		// 4. In normal circumstances, queue times for hosted runners are often < 10s,
+		// so we have more accuracy at lower queue times to measure it.
+		// 5. Buckets are added between the thresholds to ensure the margin of error is lower.
 		Buckets: []float64{2, 4, 6, 8, 10, 20, 30, 40, 50, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 900, 1200},
 	},
 		[]string{"org", "repo", "runner_group"},
