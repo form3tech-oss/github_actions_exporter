@@ -106,19 +106,15 @@ func (c *WorkflowMetricsExporter) HandleGHWebHook(w http.ResponseWriter, r *http
 }
 
 func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJobEvent, logger log.Logger) {
-	repo := *event.Repo.Name
-	org := *event.Repo.Owner.Login
+	repo := event.Repo.GetName()
+	org := event.Repo.GetOwner().GetLogin()
 	runnerGroup := event.WorkflowJob.GetRunnerGroupName()
 
 	action := *event.Action
-	conclusion := ""
+	conclusion := event.WorkflowJob.GetConclusion()
 
-	if event.WorkflowJob.Conclusion != nil {
-		conclusion = *event.WorkflowJob.Conclusion
-	}
-
-	status := *event.WorkflowJob.Status
-	id := strconv.FormatInt(*event.WorkflowJob.ID, 10)
+	status := event.WorkflowJob.GetStatus()
+	id := strconv.FormatInt(event.WorkflowJob.GetID(), 10)
 	switch action {
 	case "queued":
 		if event.WorkflowJob.StartedAt == nil {
@@ -139,7 +135,7 @@ func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJ
 			break
 		}
 
-		queuedAt := queuedEvent.(*model.WorkflowJobEvent).WorkflowJob.StartedAt
+		queuedAt := queuedEvent.(*model.WorkflowJobEvent).WorkflowJob.GetStartedAt()
 
 		// In case of deployments the time waiting for an approval adds to the queue time, so we use the last
 		// modified date of the deployment which should be the approval time and a more accurate representation of
@@ -150,10 +146,10 @@ func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJ
 				_ = level.Error(logger).Log("msg", "unable to calculate queue duration - deployment has no last update time")
 				break
 			}
-			queuedAt = queuedEvent.(*model.WorkflowJobEvent).Deployment.UpdatedAt
+			queuedAt = queuedEvent.(*model.WorkflowJobEvent).Deployment.GetUpdatedAt()
 		}
 
-		startedAt := event.WorkflowJob.StartedAt
+		startedAt := event.WorkflowJob.GetStartedAt()
 		queuedSeconds := startedAt.Sub(queuedAt.Time).Seconds()
 
 		if queuedSeconds < 0 {
