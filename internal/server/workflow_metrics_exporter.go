@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha1" // nolint: gosec
 	"encoding/hex"
@@ -41,9 +40,11 @@ func NewWorkflowMetricsExporter(logger log.Logger, opts Opts) *WorkflowMetricsEx
 
 // handleGHWebHook responds to POST /gh_event, when receive a event from GitHub.
 func (c *WorkflowMetricsExporter) HandleGHWebHook(w http.ResponseWriter, r *http.Request) {
-	buf, err := io.ReadAll(r.Body)
+	eventType := r.Header.Get("X-GitHub-Event")
+	logger := log.With(c.Logger, "event_type", eventType)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		_ = level.Error(c.Logger).Log("msg", "error reading body: %v", err)
+		_ = level.Error(logger).Log("msg", "error reading body: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -51,26 +52,26 @@ func (c *WorkflowMetricsExporter) HandleGHWebHook(w http.ResponseWriter, r *http
 
 	receivedHash := strings.SplitN(r.Header.Get("X-Hub-Signature"), "=", 2)
 	if receivedHash[0] != "sha1" {
-		_ = level.Error(c.Logger).Log("msg", "invalid webhook hash signature: SHA1")
+		_ = level.Error(logger).Log("msg", "invalid webhook hash signature: SHA1")
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
-	err = validateSignature(c.Opts.GitHubToken, receivedHash, buf)
+	err = validateSignature(c.Opts.GitHubToken, receivedHash, body)
 	if err != nil {
-		_ = level.Error(c.Logger).Log("msg", "invalid token", "err", err)
+		_ = level.Error(logger).Log("msg", "invalid token", "err", err)
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
-	_ = level.Debug(c.Logger).Log("msg", "received webhook", "payload", string(buf))
+	jsonBody := string(body)
+	_ = level.Debug(logger).Log("msg", "received webhook", "event_json", jsonBody)
 
-	eventType := r.Header.Get("X-GitHub-Event")
 	switch eventType {
 	case "ping":
-		pingEvent := model.PingEventFromJSON(io.NopCloser(bytes.NewBuffer(buf)))
-		if pingEvent == nil {
-			_ = level.Info(c.Logger).Log("msg", "ping event", "hookID", pingEvent.GetHookID())
+		_, err := model.PingEventFromJSON(body)
+		if err != nil {
+			_ = level.Error(logger).Log("msg", "could not read ping event", "event_json", jsonBody)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -78,15 +79,24 @@ func (c *WorkflowMetricsExporter) HandleGHWebHook(w http.ResponseWriter, r *http
 		_, _ = w.Write([]byte(`{"status": "honk"}`))
 		return
 	case "workflow_job":
-		event := model.WorkflowJobEventFromJSON(io.NopCloser(bytes.NewBuffer(buf)))
-		_ = level.Info(c.Logger).Log("msg", "got workflow_job event", "org", event.Repo.Owner.Login, "repo", event.Repo.Name, "runId", event.WorkflowJob.RunID, "action", event.Action)
-		go c.CollectWorkflowJobEvent(event)
+		event, err := model.WorkflowJobEventFromJSON(body)
+		if err != nil {
+			_ = level.Error(logger).Log("msg", "could not read workflow_job event", "event_json", jsonBody)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		logger = log.With(logger, "job_id", event.WorkflowJob.ID)
+		go c.CollectWorkflowJobEvent(event, logger)
 	case "workflow_run":
-		event := model.WorkflowRunEventFromJSON(io.NopCloser(bytes.NewBuffer(buf)))
-		_ = level.Info(c.Logger).Log("msg", "got workflow_run event", "org", event.GetRepo().GetOwner().GetLogin(), "repo", event.GetRepo().GetName(), "workflow_name", event.GetWorkflow().GetName(), "runNumber", event.GetWorkflowRun().GetRunNumber(), "action", event.GetAction())
+		event, err := model.WorkflowRunEventFromJSON(body)
+		if err != nil {
+			_ = level.Error(logger).Log("msg", "could not read workflow_run event", "event_json", jsonBody)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		go c.CollectWorkflowRunEvent(event)
 	default:
-		_ = level.Info(c.Logger).Log("msg", "not implemented", "eventType", eventType)
+		_ = level.Error(logger).Log("msg", "not implemented", "event_json", jsonBody)
 		w.WriteHeader(http.StatusNotImplemented)
 		return
 	}
@@ -95,7 +105,7 @@ func (c *WorkflowMetricsExporter) HandleGHWebHook(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJobEvent) {
+func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJobEvent, logger log.Logger) {
 	repo := *event.Repo.Name
 	org := *event.Repo.Owner.Login
 	runnerGroup := event.WorkflowJob.GetRunnerGroupName()
@@ -112,21 +122,20 @@ func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJ
 	switch action {
 	case "queued":
 		if event.WorkflowJob.StartedAt == nil {
-			_ = level.Debug(c.Logger).Log("msg", "not storing queued event as it has no timestamp")
+			_ = level.Debug(logger).Log("msg", "not storing queued event as it has no timestamp")
 			break
 		}
 
-		c.Cache.Set(id, event, time.Hour)
+		c.Cache.Set(id, event, 24*time.Hour)
 	case "in_progress":
 		if event.WorkflowJob.StartedAt == nil {
-			_ = level.Debug(c.Logger).Log("msg", "unable to calculate job duration of completed event steps are missing timestamps")
+			_ = level.Debug(logger).Log("msg", "unable to calculate job duration of completed event steps are missing timestamps")
 			break
 		}
 
 		queuedEvent, found := c.Cache.Get(id)
-
 		if !found {
-			_ = level.Error(c.Logger).Log("msg", "unable to calculate queue duration as there is no queued event for "+id)
+			_ = level.Error(logger).Log("msg", "unable to calculate queue duration as there is no queued event")
 			break
 		}
 
@@ -138,7 +147,7 @@ func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJ
 		if queuedEvent.(*model.WorkflowJobEvent).Deployment != nil {
 			deployment := queuedEvent.(*model.WorkflowJobEvent).Deployment
 			if deployment.UpdatedAt == nil {
-				_ = level.Error(c.Logger).Log("msg", "unable to calculate queue duration - deployment has no last update time")
+				_ = level.Error(logger).Log("msg", "unable to calculate queue duration - deployment has no last update time")
 				break
 			}
 			queuedAt = queuedEvent.(*model.WorkflowJobEvent).Deployment.UpdatedAt
@@ -148,7 +157,7 @@ func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJ
 		queuedSeconds := startedAt.Sub(queuedAt.Time).Seconds()
 
 		if queuedSeconds < 0 {
-			_ = level.Error(c.Logger).Log("msg", "not recording the queue time as it is negative")
+			_ = level.Error(logger).Log("msg", "not recording the queue time as it is negative")
 			break
 		}
 
@@ -156,7 +165,7 @@ func (c *WorkflowMetricsExporter) CollectWorkflowJobEvent(event *model.WorkflowJ
 		c.PrometheusObserver.ObserveWorkflowJobQueueTime(org, repo, runnerGroup, queuedSeconds)
 	case "completed":
 		if event.WorkflowJob.StartedAt == nil || event.WorkflowJob.CompletedAt == nil {
-			_ = level.Debug(c.Logger).Log("msg", "unable to calculate job duration of completed event steps are missing timestamps")
+			_ = level.Debug(logger).Log("msg", "unable to calculate job duration of completed event steps are missing timestamps")
 			break
 		}
 

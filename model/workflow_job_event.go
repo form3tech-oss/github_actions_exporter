@@ -2,8 +2,6 @@ package model
 
 import (
 	"encoding/json"
-	"io"
-
 	"github.com/google/go-github/v47/github"
 )
 
@@ -25,11 +23,11 @@ type WorkflowJobEvent struct {
 	Deployment *github.Deployment `json:"deployment,omitempty"`
 }
 
-func WorkflowJobEventFromJSON(data io.Reader) *WorkflowJobEvent {
-	decoder := json.NewDecoder(data)
+func WorkflowJobEventFromJSON(jsonString []byte) (*WorkflowJobEvent, error) {
 	var event WorkflowJobEvent
-	if err := decoder.Decode(&event); err != nil {
-		return nil
+	err := json.Unmarshal(jsonString, &event)
+	if err != nil {
+		return nil, err
 	}
-	return &event
+	return &event, nil
 }
