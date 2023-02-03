@@ -34,7 +34,7 @@ func NewWorkflowMetricsExporter(logger log.Logger, opts Opts) *WorkflowMetricsEx
 		Logger:             logger,
 		Opts:               opts,
 		PrometheusObserver: &PrometheusObserver{},
-		Cache:              cache.New(time.Hour, time.Minute),
+		Cache:              cache.New(24*time.Hour, 30*time.Minute),
 	}
 }
 
