@@ -85,7 +85,7 @@ func (c *WorkflowMetricsExporter) HandleGHWebHook(w http.ResponseWriter, r *http
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		logger = log.With(logger, "job_id", event.WorkflowJob.ID)
+		logger = log.With(logger, "job_id", event.WorkflowJob.GetID())
 		go c.CollectWorkflowJobEvent(event, logger)
 	case "workflow_run":
 		event, err := model.WorkflowRunEventFromJSON(body)
