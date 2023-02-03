@@ -95,9 +95,15 @@ func Test_Server_MetricsRouteAfterWorkflowJob(t *testing.T) {
 	assert.Contains(t, string(payload), `workflow_job_duration_seconds_total{conclusion="success",org="someone",repo="some-repo",runner_group="runner-group",status="completed"} 10`)
 }
 
-// Mimics a scenario in which a job required an approval for a deployment.
-// The events received are: 'queued' status before approval, 'waiting' status, another 'queued' after the job is approved
-// that contains a 'deployment' object, and then finally 'in_progress' and 'completed'
+// This handles a case where a job requires an approval to deploy to an environment.
+// The events received are:
+// 1. Job is scheduled
+// 2. Event with `status: queued`
+// 3. Event with `status: waiting`
+// 4. Job manually approved
+// 5. Another event with `status: queued`
+// The event under 5. contains a `deployment` object with an `updated_at` time which we use to calculate the queue time
+// to avoid adding the time to approve the deployment to the runner queue time.
 func Test_Server_QueueTimeWithDeployment(t *testing.T) {
 	startServer(t)
 
