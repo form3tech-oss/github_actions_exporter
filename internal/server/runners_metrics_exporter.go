@@ -50,8 +50,6 @@ func (c *RunnersMetricsExporter) Start(ctx context.Context) error {
 	return nil
 }
 
-// Collect information from the Enterprise runners, if an Enterprise name has been configured.
-// Requires the GitHub API Token to have manage_runners:enterprise scope.
 func (c *RunnersMetricsExporter) collectRunnersInformation(ctx context.Context) {
 	// Resetting, otherwise a certain label combination might retain its old value despite not being present in the pool
 	// For example, if there are no busy runners then group[true] will be empty and the old value of group[true] will
@@ -77,16 +75,21 @@ func (c *RunnersMetricsExporter) collectRunnersInformation(ctx context.Context) 
 		allRunners[*runnerGroup.Name] = groupRunners
 	}
 
-	enterpriseRunners, err := c.GHClient.GetEnterpriseRunners(ctx, c.Opts.GitHubEnterprise)
-	if err != nil {
-		_ = level.Error(c.Logger).Log("msg", "unable to retrieve enterprise runners' info", "error", err.Error())
-		return
-	}
+	// Collect information from the Enterprise runners, if an Enterprise name has been configured.
+	// Requires the GitHub API Token to have manage_runners:enterprise scope.
+	if c.Opts.GitHubEnterprise != "" {
+		enterpriseRunners, err := c.GHClient.GetEnterpriseRunners(ctx, c.Opts.GitHubEnterprise)
 
-	// We are putting the enterprise runners into a fake runner group named after the enterprise
-	// This is because we already have that name in Grafana and also because there is no way in the API at the moment
-	// to tie them to their real runner group
-	allRunners[c.Opts.GitHubEnterprise] = enterpriseRunners
+		// We are putting the enterprise runners into a fake runner group named after the enterprise
+		// This is because we already have that name in Grafana and also because there is no way in the API at the moment
+		// to tie them to their real runner group
+		allRunners[c.Opts.GitHubEnterprise] = enterpriseRunners
+
+		if err != nil {
+			_ = level.Error(c.Logger).Log("msg", "unable to retrieve enterprise runners' info", "error", err.Error())
+			return
+		}
+	}
 
 	for group, runners := range allRunners {
 		for _, runner := range runners {

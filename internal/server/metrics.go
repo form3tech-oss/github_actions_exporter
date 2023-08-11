@@ -170,9 +170,9 @@ func (o *PrometheusObserver) CountWorkflowRunStatus(org, repo, status, conclusio
 }
 
 func (o *PrometheusObserver) ResetRegisteredRunnersTotal() {
-	workflowRunStatusCounter.Reset()
+	registeredRunnersTotal.Reset()
 }
 
 func (o *PrometheusObserver) IncreaseRegisteredRunnersTotal(busy bool, status string, runnerGroup string) {
-	workflowRunStatusCounter.WithLabelValues(strconv.FormatBool(busy), status, runnerGroup).Inc()
+	registeredRunnersTotal.WithLabelValues(strconv.FormatBool(busy), status, runnerGroup).Inc()
 }

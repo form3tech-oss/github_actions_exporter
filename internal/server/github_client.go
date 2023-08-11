@@ -107,11 +107,7 @@ func (c *DefaultGitHubClient) GetGroupRunners(ctx context.Context, groupID int64
 
 func (c *DefaultGitHubClient) GetActionsBillingOrg(ctx context.Context, org string) (*github.ActionBilling, error) {
 	billing, _, err := c.Client.Billing.GetActionsBillingOrg(ctx, org)
-	if err != nil {
-		return nil, err
-	}
-
-	return billing, nil
+	return billing, err
 }
 
 func (c *DefaultGitHubClient) GetActionsBillingUser(ctx context.Context, user string) (*github.ActionBilling, error) {
