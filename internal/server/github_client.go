@@ -116,9 +116,5 @@ func (c *DefaultGitHubClient) GetActionsBillingOrg(ctx context.Context, org stri
 
 func (c *DefaultGitHubClient) GetActionsBillingUser(ctx context.Context, user string) (*github.ActionBilling, error) {
 	billing, _, err := c.Client.Billing.GetActionsBillingUser(ctx, user)
-	if err != nil {
-		return nil, err
-	}
-
-	return billing, nil
+	return billing, err
 }
