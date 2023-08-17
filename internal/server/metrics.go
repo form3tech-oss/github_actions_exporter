@@ -1,8 +1,9 @@
 package server
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -106,6 +107,13 @@ var (
 	},
 		[]string{"busy", "status", "runner_group"},
 	)
+
+	annotationsTagsTotal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "annotations_tags_total",
+		Help: "The total amount of annotation tags",
+	},
+		[]string{"tag"},
+	)
 )
 
 func init() {
@@ -123,6 +131,7 @@ func init() {
 	prometheus.MustRegister(totalMinutesUsedMacOSActions)
 	prometheus.MustRegister(totalMinutesUsedWindowsActions)
 	prometheus.MustRegister(registeredRunnersTotal)
+	prometheus.MustRegister(annotationsTagsTotal)
 }
 
 type WorkflowObserver interface {

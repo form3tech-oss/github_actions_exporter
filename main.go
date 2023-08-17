@@ -18,18 +18,22 @@ import (
 )
 
 var (
-	listenAddress               = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9101").String()
-	metricsPath                 = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
-	ghWebHookPath               = kingpin.Flag("web.gh-webhook-path", "Path that will be called by the GitHub webhook.").Default("/gh_event").String()
-	githubWebhookToken          = kingpin.Flag("gh.github-webhook-token", "GitHub Webhook Token.").Envar("GITHUB_WEBHOOK_TOKEN").Default("").String()
-	gitHubAPIToken              = kingpin.Flag("gh.github-api-token", "GitHub API Token.").Envar("GITHUB_API_TOKEN").Default("").String()
-	gitHubOrg                   = kingpin.Flag("gh.github-org", "GitHub Organization.").Envar("GITHUB_ORG").Default("").String()
-	gitHubEnterprise            = kingpin.Flag("gh.github-enterprise", "GitHub Enterprise.").Envar("GITHUB_ENTERPRISE").Default("").String()
-	gitHubUser                  = kingpin.Flag("gh.github-user", "GitHub User.").Default("").String()
-	gitHubBillingPollingSeconds = kingpin.Flag("gh.billing-poll-seconds", "Frequency at which to poll billing API.").Default("5").Int()
-	gitHubBillingMetricsEnabled = kingpin.Flag("gh.billing-metrics-enabled", "Whether to gather billing metrics.").Envar("GITHUB_BILLING_METRICS_ENABLED").Default("false").Bool()
-	githubRunnersPollingSeconds = kingpin.Flag("gh.runners-poll-seconds", "Frequency at which to poll the runners API.").Default("60").Int()
-	gitHubRunnersMetricsEnabled = kingpin.Flag("gh.runners-metrics-enabled", "Whether to gather runners metrics.").Envar("GITHUB_RUNNERS_METRICS_ENABLED").Default("false").Bool()
+	listenAddress                 = kingpin.Flag("web.listen-address", "Address to listen on for web interface and telemetry.").Default(":9101").String()
+	metricsPath                   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
+	ghWebHookPath                 = kingpin.Flag("web.gh-webhook-path", "Path that will be called by the GitHub webhook.").Default("/gh_event").String()
+	githubWebhookToken            = kingpin.Flag("gh.github-webhook-token", "GitHub Webhook Token.").Envar("GITHUB_WEBHOOK_TOKEN").Default("").String()
+	gitHubAPIToken                = kingpin.Flag("gh.github-api-token", "GitHub API Token.").Envar("GITHUB_API_TOKEN").Default("").String()
+	gitHubOrg                     = kingpin.Flag("gh.github-org", "GitHub Organization.").Envar("GITHUB_ORG").Default("").String()
+	gitHubEnterprise              = kingpin.Flag("gh.github-enterprise", "GitHub Enterprise.").Envar("GITHUB_ENTERPRISE").Default("").String()
+	gitHubUser                    = kingpin.Flag("gh.github-user", "GitHub User.").Default("").String()
+	gitHubBillingPollingSeconds   = kingpin.Flag("gh.billing-poll-seconds", "Frequency at which to poll billing API.").Default("5").Int()
+	gitHubBillingMetricsEnabled   = kingpin.Flag("gh.billing-metrics-enabled", "Whether to gather billing metrics.").Envar("GITHUB_BILLING_METRICS_ENABLED").Default("false").Bool()
+	githubRunnersPollingSeconds   = kingpin.Flag("gh.runners-poll-seconds", "Frequency at which to poll the runners API.").Default("60").Int()
+	gitHubRunnersMetricsEnabled   = kingpin.Flag("gh.runners-metrics-enabled", "Whether to gather runners metrics.").Envar("GITHUB_RUNNERS_METRICS_ENABLED").Default("false").Bool()
+	annotationsTagsMetricsEnabled = kingpin.Flag("gf.annotations-tags-metrics-enabled", "Whether to gather annotations metrics").Envar("ANNOTATIONS_METRICS_ENABLED").Default("false").Bool()
+	annotationAPIPollSeconds      = kingpin.Flag("gf.annotations-poll-seconds", "Frequency at which to poll the annotations API.").Default("30").Int()
+	grafanaToken                  = kingpin.Flag("gf.grafana-token", "Grafana token to scrape metrics from").Envar("GRAFANA_TOKEN").Default("").String()
+	grafanaBaseUrl                = kingpin.Flag("gf.grafana-base-url", "Grafana base endpoint to scrape metrics from").Envar("GRAFANA_URL").Default("").String()
 )
 
 func init() {
@@ -56,18 +60,22 @@ func main() {
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
 	srv := server.NewServer(logger, server.Opts{
-		WebhookPath:           *ghWebHookPath,
-		ListenAddress:         *listenAddress,
-		MetricsPath:           *metricsPath,
-		GitHubToken:           *githubWebhookToken,
-		GitHubAPIToken:        *gitHubAPIToken,
-		GitHubUser:            *gitHubUser,
-		GitHubOrg:             *gitHubOrg,
-		GitHubEnterprise:      *gitHubEnterprise,
-		BillingAPIPollSeconds: *gitHubBillingPollingSeconds,
-		BillingMetricsEnabled: *gitHubBillingMetricsEnabled,
-		RunnersAPIPollSeconds: *githubRunnersPollingSeconds,
-		RunnersMetricsEnabled: *gitHubRunnersMetricsEnabled,
+		WebhookPath:                   *ghWebHookPath,
+		ListenAddress:                 *listenAddress,
+		MetricsPath:                   *metricsPath,
+		GitHubToken:                   *githubWebhookToken,
+		GitHubAPIToken:                *gitHubAPIToken,
+		GitHubUser:                    *gitHubUser,
+		GitHubOrg:                     *gitHubOrg,
+		GitHubEnterprise:              *gitHubEnterprise,
+		BillingAPIPollSeconds:         *gitHubBillingPollingSeconds,
+		BillingMetricsEnabled:         *gitHubBillingMetricsEnabled,
+		RunnersAPIPollSeconds:         *githubRunnersPollingSeconds,
+		RunnersMetricsEnabled:         *gitHubRunnersMetricsEnabled,
+		AnnotationsTagsMetricsEnabled: *annotationsTagsMetricsEnabled,
+		AnnotationAPIPollSeconds:      *annotationAPIPollSeconds,
+		GrafanaToken:                  *grafanaToken,
+		GrafanaBaseUrl:                *grafanaBaseUrl,
 	})
 	go func() {
 		err := srv.Serve(context.Background())

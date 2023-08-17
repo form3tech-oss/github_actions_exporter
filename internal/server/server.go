@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/google/go-github/v47/github"
-	"golang.org/x/oauth2"
 	"net"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/go-github/v47/github"
+	"golang.org/x/oauth2"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -24,14 +25,18 @@ type Opts struct {
 	// GitHub webhook token.
 	GitHubToken string
 	// GitHub API token.
-	GitHubAPIToken        string
-	GitHubOrg             string
-	GitHubEnterprise      string
-	GitHubUser            string
-	BillingAPIPollSeconds int
-	RunnersAPIPollSeconds int
-	BillingMetricsEnabled bool
-	RunnersMetricsEnabled bool
+	GitHubAPIToken                string
+	GitHubOrg                     string
+	GitHubEnterprise              string
+	GitHubUser                    string
+	BillingAPIPollSeconds         int
+	RunnersAPIPollSeconds         int
+	BillingMetricsEnabled         bool
+	RunnersMetricsEnabled         bool
+	AnnotationsTagsMetricsEnabled bool
+	GrafanaBaseUrl                string
+	GrafanaToken                  string
+	AnnotationAPIPollSeconds      int
 }
 
 type Server struct {
@@ -78,6 +83,16 @@ func NewServer(logger log.Logger, opts Opts) *Server {
 		}
 	} else {
 		_ = level.Info(logger).Log("msg", "runners metrics are disabled")
+	}
+
+	if opts.AnnotationsTagsMetricsEnabled {
+		annotationsExporter, err := NewAnnotationsTagsMetricExporter(logger, opts)
+		if err != nil {
+			_ = level.Info(logger).Log("msg", fmt.Sprintf("not exporting annotations: %v", err))
+		}
+		annotationsExporter.Start(context.TODO())
+	} else {
+		_ = level.Info(logger).Log("msg", "annotations metrics are disabled")
 	}
 
 	workflowExporter := NewWorkflowMetricsExporter(logger, opts, &observer)
