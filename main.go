@@ -26,7 +26,7 @@ var (
 	gitHubOrg                   = kingpin.Flag("gh.github-org", "GitHub Organization.").Envar("GITHUB_ORG").Default("").String()
 	gitHubEnterprise            = kingpin.Flag("gh.github-enterprise", "GitHub Enterprise.").Envar("GITHUB_ENTERPRISE").Default("").String()
 	gitHubUser                  = kingpin.Flag("gh.github-user", "GitHub User.").Default("").String()
-	gitHubBillingPollingSeconds = kingpin.Flag("gh.billing-poll-seconds", "Frequency at which to poll billing API.").Default("5").Int()
+	gitHubBillingPollingSeconds = kingpin.Flag("gh.billing-poll-seconds", "Frequency at which to poll billing API.").Default("600").Int()
 	gitHubBillingMetricsEnabled = kingpin.Flag("gh.billing-metrics-enabled", "Whether to gather billing metrics.").Envar("GITHUB_BILLING_METRICS_ENABLED").Default("true").Bool()
 	githubRunnersPollingSeconds = kingpin.Flag("gh.runners-poll-seconds", "Frequency at which to poll the runners API.").Default("60").Int()
 	gitHubRunnersMetricsEnabled = kingpin.Flag("gh.runners-metrics-enabled", "Whether to gather runners metrics.").Envar("GITHUB_RUNNERS_METRICS_ENABLED").Default("false").Bool()
